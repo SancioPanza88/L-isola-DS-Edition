@@ -18,7 +18,7 @@ jobs:
 
       - name: Installa libnds e strumenti
         run: |
-          dkp-pacman -S --noconfirm nds-dev make
+          dkp-pacman -S --noconfirm nds-dev 
           echo "/opt/devkitpro/devkitARM/bin" >> $GITHUB_PATH
           echo "/opt/devkitpro/tools/bin" >> $GITHUB_PATH
 
