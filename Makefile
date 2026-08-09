@@ -26,7 +26,11 @@ GRAPHICS	:=
 GAME_TITLE	:=	L'ISOLA DS
 GAME_SUBTITLE1	:=	Sopravvivenza
 GAME_SUBTITLE2	:=	21 giorni
-GAME_ICON	:=	$(CURDIR)/icon.bmp
+# GAME_ICON va esportato: la regola %.nds gira nella sub-make di $(BUILD),
+# dove CURDIR punta a build/ (icon.bmp sta invece nella root del progetto).
+ifeq ($(strip $(GAME_ICON)),)
+export GAME_ICON	:=	$(CURDIR)/icon.bmp
+endif
 
 #---------------------------------------------------------------------------------
 # options for code generation
