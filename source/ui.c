@@ -12,18 +12,18 @@
 #include "font_8x8.h"
 #include "ui.h"
 
-/* ---- Colori (macro RGB15 ufficiale di libnds) ---- */
-#define C_BG      RGB15(2,7,12)     /* blu oceano scuro */
-#define C_PANEL   RGB15(6,13,19)
-#define C_PANEL2  RGB15(4,10,15)
-#define C_BORDO   RGB15(13,24,31)
-#define C_TESTO   RGB15(31,30,25)   /* pergamena */
-#define C_SOFT    RGB15(18,22,25)
-#define C_BENE    RGB15(15,28,14)
-#define C_DANNO   RGB15(31,17,14)
-#define C_ACCENTO RGB15(31,24,9)
-#define C_DIM     RGB15(11,13,15)
-#define C_CUORE   RGB15(30,10,10)
+/* ---- Colori (RGB15 ufficiale di libnds, con bit 15 = opacita') ---- */
+#define C_BG      (BIT(15) | RGB15(2,7,12))     /* blu oceano scuro */
+#define C_PANEL   (BIT(15) | RGB15(6,13,19))
+#define C_PANEL2  (BIT(15) | RGB15(4,10,15))
+#define C_BORDO   (BIT(15) | RGB15(13,24,31))
+#define C_TESTO   (BIT(15) | RGB15(31,30,25))   /* pergamena */
+#define C_SOFT    (BIT(15) | RGB15(18,22,25))
+#define C_BENE    (BIT(15) | RGB15(15,28,14))
+#define C_DANNO   (BIT(15) | RGB15(31,17,14))
+#define C_ACCENTO (BIT(15) | RGB15(31,24,9))
+#define C_DIM     (BIT(15) | RGB15(11,13,15))
+#define C_CUORE   (BIT(15) | RGB15(30,10,10))
 
 /* ---- Stato UI ---- */
 static u16 *mainbuf;

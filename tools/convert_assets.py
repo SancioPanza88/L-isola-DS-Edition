@@ -36,7 +36,8 @@ BG_COL = (11, 36, 50)    # sfondo scuro (oceanico, come #0b2432)
 
 
 def rgb555(r, g, b):
-    return (r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10)
+    # bit 15 = opacita': senza, i pixel della bitmap Bmp16 sono trasparenti
+    return 0x8000 | (r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10)
 
 
 def fit(img, tw, th, bg):
