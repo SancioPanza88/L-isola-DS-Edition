@@ -372,12 +372,6 @@ static void draw_card(int x, int y, int id) {
     tronca(t, sizeof(t), carta_effetto(id), 6);
     testo_clip(x + 3, y + 71, t, C_SOFT, subbuf, x + 1, y + 65, 60, 14);
 }
-    /* 2) ART: icona centrata sulla carta (banda y+20..y+64) */
-    img_blit(x + 9, y + 20, ASSET_CARD_1 + (id - 1), subbuf);
-    /* 3) EFFETTO: 1 riga sotto l'arte, clippata alla carta */
-    tronca(t, sizeof(t), carta_effetto(id), 6);
-    testo_clip(x + 3, y + 71, t, C_SOFT, subbuf, x + 1, y + 65, 60, 14);
-}
 
 static void draw_bottom_gioca(void) {
     int i, vis;
