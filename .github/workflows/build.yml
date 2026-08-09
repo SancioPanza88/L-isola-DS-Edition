@@ -41,7 +41,16 @@ jobs:
           # newlib, niente uchar.h/cothread): gli header BlocksDS completi sono
           # incompatibili. Serve UN solo header BlocksDS: nds/arm9/cp15_asm.h
           # (solo macro, assente nel classico) -> lo copiamo in una dir shim.
-          mkdir -p /tmp/bds-hdr/nds/arm9
+          # Stub sys/ioctl.h: il newlib di devkitARM non lo fornisce e la fork
+          # lo include da sys/socket.h solo per il path lwIP (netif). Nel build
+          # noip nessun file usa ioctl() (verificato sul commit pin): header
+          # vuoto, col solo guard. Se un futuro commit lo usasse, la compilazione
+          # darebbe un errore chiaro.
+          mkdir -p /tmp/bds-hdr/sys /tmp/bds-hdr/nds/arm9
+          printf '%s\n' \
+            '#ifndef SYS_IOCTL_H__' \
+            '#define SYS_IOCTL_H__' \
+            '#endif' > /tmp/bds-hdr/sys/ioctl.h
           curl -fsSL -o /tmp/bds-hdr/nds/arm9/cp15_asm.h \
             "https://raw.githubusercontent.com/blocksds/libnds/$BDS_LIBNDS_SHA/include/nds/arm9/cp15_asm.h"
           # L'enum WIFI_SYNC della fork collide con fifocommon.h del libnds
