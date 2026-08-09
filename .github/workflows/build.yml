@@ -26,20 +26,13 @@ jobs:
           git clone --depth 1 https://github.com/BlocksDS/dswifi.git /tmp/dswifi || \
           git clone --depth 1 https://codeberg.org/BlocksDS/dswifi.git /tmp/dswifi
           git clone --depth 1 https://github.com/BlocksDS/libnds.git /tmp/bds-libnds
-          calico="$(find "$DEVKITPRO" -name 'calico.h' 2>/dev/null | head -1)"
-          if [ -n "$calico" ]; then extra=$(dirname "$calico"); else extra="$DEVKITPRO/libnds/include"; fi
-          # La fork BlocksDS definisce un enum WIFI_SYNC che collide con
-          # libnds classico (nds/fifocommon.h). Rinomina il token (valore 0
-          # invariato) nei 3 file della fork che lo usano.
-          sed -i 's/\bWIFI_SYNC\b/DSWIFI_SYNC/g' \
-            /tmp/dswifi/source/common/wifi_shared.h \
-            /tmp/dswifi/source/arm9/ipc.c \
-            /tmp/dswifi/source/arm7/ipc.c
+          # La fork BlocksDS richiede il suo SDK nativo (cothread, libndsCrash,
+          # cp15_asm.h): gli header BlocksDS vanno PRIMA di quelli devkitPro.
+          # L'enum WIFI_SYNC della fork non collide col fifocommon.h di BlocksDS.
           cd /tmp/dswifi
           make -f Makefile.arm9 \
             ARM_NONE_EABI_PATH="$DEVKITARM/bin/" \
-            LIBDIRS="$DEVKITPRO/libnds" \
-            INCLUDEDIRS="include source $extra $DEVKITPRO/libnds/include /tmp/bds-libnds/include"
+            INCLUDEDIRS="include source /tmp/bds-libnds/include $DEVKITPRO/libnds/include"
           cp lib/libdswifi9_noip.a "$DEVKITPRO/libnds/lib/libdswifi9.a"
           cp include/dswifi9.h include/dswifi_common.h include/dswifi_version.h \
             "$DEVKITPRO/libnds/include/"
