@@ -11,7 +11,14 @@
 #include "game.h"
 #include "save.h"
 
-#define SAVE_MAGIC "LISLSV01"
+/*
+   I file vengono creati con percorsi relativi: dopo fatInitDefault il
+   processo lavora gia nella cartella della scheda (root "fat:/" oppure
+   la cartella in cui si trova il .nds).
+*/
+#define SAVE_MAGIC   "LISLSV01"
+#define SAVE_FILENAME "lisola_save.dat"
+#define TOP5_FILENAME "lisola_top5.dat"
 
 typedef struct {
     char magic[8];
@@ -34,16 +41,6 @@ typedef struct {
 
 static bool fat_ok = false;
 
-static bool percorso(char *out, size_t n, const char *nome) {
-    char *cwd = NULL;
-    if (!fat_ok) return false;
-    cwd = fatGetDefaultCwd();
-    if (!cwd) return false;
-    snprintf(out, n, "%s%s", cwd, nome);
-    free(cwd);
-    return true;
-}
-
 bool save_init(void) {
     fat_ok = fatInitDefault();
     g_carica_top5();
@@ -51,7 +48,6 @@ bool save_init(void) {
 }
 
 bool g_salva(void) {
-    char path[300];
     SaveData d;
     FILE *f;
     if (G.fine || G.modale || G.giorno == 0) return false;
@@ -72,8 +68,8 @@ bool g_salva(void) {
     d.negativiDiFila = G.negativiDiFila;
     d.strumentiGiocati = G.strumentiGiocati;
     d.nobb = G.nobb; memcpy(d.obiettivi, G.obiettivi, sizeof(d.obiettivi));
-    if (!percorso(path, sizeof(path), "lisola_save.dat")) return false;
-    f = fopen(path, "wb");
+    if (!fat_ok) return false;
+    f = fopen(SAVE_FILENAME, "wb");
     if (!f) return false;
     fwrite(&d, sizeof(d), 1, f);
     fclose(f);
@@ -92,11 +88,10 @@ static bool dati_validi(const SaveData *d) {
 }
 
 bool g_carica(void) {
-    char path[300];
     SaveData d;
     FILE *f;
-    if (!percorso(path, sizeof(path), "lisola_save.dat")) return false;
-    f = fopen(path, "rb");
+    if (!fat_ok) return false;
+    f = fopen(SAVE_FILENAME, "rb");
     if (!f) return false;
     if (fread(&d, sizeof(d), 1, f) != 1) { fclose(f); return false; }
     fclose(f);
@@ -122,29 +117,27 @@ bool g_carica(void) {
 }
 
 bool g_salva_esiste(void) {
-    char path[300];
     FILE *f;
-    if (!percorso(path, sizeof(path), "lisola_save.dat")) return false;
-    f = fopen(path, "rb");
+    if (!fat_ok) return false;
+    f = fopen(SAVE_FILENAME, "rb");
     if (!f) return false;
     fclose(f);
     return true;
 }
 
 void g_salva_elimina(void) {
-    char path[300];
-    if (percorso(path, sizeof(path), "lisola_save.dat")) remove(path);
+    if (!fat_ok) return;
+    remove(SAVE_FILENAME);
 }
 
 /* ---- Top 5 ---- */
 
 void g_carica_top5(void) {
-    char path[300];
     FILE *f;
     int p, g, v;
     g_top5_n = 0;
-    if (!percorso(path, sizeof(path), "lisola_top5.dat")) return;
-    f = fopen(path, "r");
+    if (!fat_ok) return;
+    f = fopen(TOP5_FILENAME, "r");
     if (!f) return;
     while (g_top5_n < 5 && fscanf(f, "%d %d %d", &p, &g, &v) == 3) {
         g_top5[g_top5_n][0] = p;
@@ -156,11 +149,10 @@ void g_carica_top5(void) {
 }
 
 void g_salva_top5(void) {
-    char path[300];
     FILE *f;
     int i;
-    if (!percorso(path, sizeof(path), "lisola_top5.dat")) return;
-    f = fopen(path, "w");
+    if (!fat_ok) return;
+    f = fopen(TOP5_FILENAME, "w");
     if (!f) return;
     for (i = 0; i < g_top5_n; i++)
         fprintf(f, "%d %d %d\n", g_top5[i][0], g_top5[i][1], g_top5[i][2]);
