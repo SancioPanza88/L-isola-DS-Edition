@@ -64,7 +64,13 @@ static const char *REGOLE_TESTO =
     "9. Le carte in mano a sera finiscono nello scarto, poi tornano nel mazzo.\n"
     "10. Il gioco salva da solo: CONTINUA riprende la partita.";
 
-/* ---- Funzioni di disegno ---- */
+/* ---- Funzioni di disegno ----
+   Line-height: ogni riga di testo occupa LINE_H px (glifo 8 px + 2 di aria),
+   cosi' le righe non si toccano mai. Tutti i panelli passano un rettangolo
+   di clip: il testo non esce mai dal proprio riquadro. */
+
+#define LINE_GSH 8  /* altezza del glifo */
+#define LINE_H   10 /* step verticale tra le righe di testo */
 
 static void fill_screen(u16 *buf, u16 col) {
     int x, y;
@@ -98,44 +104,59 @@ static void img_blit(int x, int y, int idx, u16 *buf) {
         memcpy(&buf[(y + yy) * 256 + x], &src[yy * w], (size_t)w * 2);
 }
 
+/* testo: niente clip = intero schermo. '\n' = nuova riga a LINE_H. */
+static void testo_clip(int x, int y, const char *s, u16 col, u16 *buf,
+                       int cx, int cy, int cw, int ch);
+static int testo_wrap_clip(int x, int y, int maxw, const char *s, u16 col,
+                           int maxlines, u16 *buf, int cx, int cy, int cw, int ch);
+
 static void testo(int x, int y, const char *s, u16 col, u16 *buf) {
+    testo_clip(x, y, s, col, buf, 0, 0, 256, 192);
+}
+
+static void testo_clip(int x, int y, const char *s, u16 col, u16 *buf,
+                       int cx, int cy, int cw, int ch) {
     int x0 = x, y0 = y;
     while (*s) {
         unsigned char c = (unsigned char)*s++;
         int i;
-        if (c == '\n') { x0 = x; y0 += 8; continue; }
-        if (x0 < 0 || y0 < 0 || y0 + 8 > 192) { x0 += 8; continue; }
-        for (i = 0; i < 8; i++) {
+        if (c == '\n') { x0 = x; y0 += LINE_H; continue; }
+        if (y0 + LINE_GSH > cy + ch) return; /* niente piu' righe dentro il clip */
+        if (x0 < 0 || y0 < 0 || y0 + LINE_GSH > 192) { x0 += LINE_GSH; continue; }
+        for (i = 0; i < LINE_GSH; i++) {
             unsigned char riga = font_8x8[c][i];
             int b;
-            for (b = 0; b < 8; b++) {
+            for (b = 0; b < LINE_GSH; b++) {
                 int px = x0 + b, py = y0 + i;
                 if (!(riga & (0x80 >> b))) continue;
-                if (px < 0 || px >= 256 || py < 0 || py >= 192) continue;
+                if (px < cx || px >= cx + cw || py < cy || py >= cy + ch) continue;
                 buf[py * 256 + px] = col;
             }
         }
-        x0 += 8;
+        x0 += LINE_GSH;
     }
 }
 
-/* testo a capo: massimo maxlines righe di larghezza maxw, a partire da (x,y) */
-static int testo_wrap(int x, int y, int maxw, const char *s, u16 col, int maxlines, u16 *buf) {
+/* testo a capo: massimo maxlines righe di larghezza maxw, a partire da (x,y).
+   Con clip attivo le righe si fermano al bordo basso del riquadro. */
+static int testo_wrap_clip(int x, int y, int maxw, const char *s, u16 col,
+                           int maxlines, u16 *buf, int cx, int cy, int cw, int ch) {
     char riga[64];
     int nrighe = 0, n = 0;
     while (nrighe < maxlines) {
+        if (y + (nrighe + 1) * LINE_H > cy + ch) break; /* clip basso del pannello */
         if (!*s || *s == '\n') {
             riga[n] = '\0';
-            testo(x, y + nrighe * 8, riga, col, buf);
+            testo_clip(x, y + nrighe * LINE_H, riga, col, buf, cx, cy, cw, ch);
             nrighe++;
             if (*s == '\n') s++;
             n = 0;
             if (!*s) break;
             continue;
         }
-        if (n > 0 && (n + 1) * 8 > maxw) {
+        if (n > 0 && (n + 1) * LINE_GSH > maxw) {
             riga[n] = '\0';
-            testo(x, y + nrighe * 8, riga, col, buf);
+            testo_clip(x, y + nrighe * LINE_H, riga, col, buf, cx, cy, cw, ch);
             nrighe++;
             n = 0;
             continue;
@@ -215,39 +236,40 @@ static void draw_top_board(void) {
         }
     }
 
-    /* risorse */
+    /* risorse (26..42): ogni voce ha icona e contatore nello stesso riquadro */
     for (i = 0; i < R_COUNT; i++) {
-        int x = 18 + i * 56;
+        int x = 4 + i * 64;
         char t[40];
-        img_blit(x, 29, ASSET_ICON_R1 + i, mainbuf);
-        snprintf(t, sizeof(t), "%.4s %d", risorsa_nome(i), G.risorse[i]);
-        testo(x + 17, 31, t, G.risorse[i] == 0 ? C_DANNO : C_TESTO, mainbuf);
+        img_blit(x, 27, ASSET_ICON_R1 + i, mainbuf);
+        snprintf(t, sizeof(t), "%.4s%d", risorsa_nome(i), G.risorse[i]);
+        testo(x + 18, 28, t, G.risorse[i] == 0 ? C_DANNO : C_TESTO, mainbuf);
     }
 
-    /* evento del giorno */
-    rect_bordo(2, 46, 252, 54, C_BORDO, C_PANEL, mainbuf);
-    testo(4, 48, "EVENTO", C_ACCENTO, mainbuf);
+    /* pannello EVENTO (45..103) */
+    rect_bordo(2, 45, 252, 58, C_BORDO, C_PANEL, mainbuf);
+    testo(4, 47, "EVENTO", C_ACCENTO, mainbuf);
     if (G.giorno > 0 && g_evento_id >= 1 && g_evento_id <= 12) {
-        img_blit(4, 58, ASSET_ICON_E1 + (g_evento_id - 1), mainbuf);
-        testo_wrap(32, 56, 216, evento_testo(g_evento_id), C_TESTO, 5, mainbuf);
+        img_blit(4, 57, ASSET_ICON_E1 + (g_evento_id - 1), mainbuf);
+        testo_wrap_clip(30, 56, 200, evento_testo(g_evento_id), C_TESTO, 5,
+                        mainbuf, 30, 45, 222, 58);
     }
 
-    /* accampamento: carte da 44px, sotto la ZONA boom â†’ niente sovrapposizione col diario */
-    rect_bordo(2, 102, 252, 56, C_BORDO, C_PANEL, mainbuf);
-    testo(4, 104, "ACCAMPAMENTO", C_ACCENTO, mainbuf);
+    /* accampamento (104..162): carte 44px dentro il pannello */
+    rect_bordo(2, 104, 252, 58, C_BORDO, C_PANEL, mainbuf);
+    testo(4, 106, "ACCAMPAMENTO", C_ACCENTO, mainbuf);
     if (G.nacc == 0) {
-        testo(4, 118, "Nessun attivo. Gioca STRUMENTI o", C_SOFT, mainbuf);
+        testo(4, 116, "Nessun attivo. Gioca STRUMENTI o", C_SOFT, mainbuf);
         testo(4, 126, "PERSONE per metterli qui.", C_SOFT, mainbuf);
     } else {
         for (i = 0; i < G.nacc && i < 13; i++)
-            img_blit(2 + i * 15, 106, ASSET_CARD_1 + (G.acc[i] - 1), mainbuf);
+            img_blit(2 + i * 15, 114, ASSET_CARD_1 + (G.acc[i] - 1), mainbuf);
     }
 
-    /* diario: sotto l'accampamento, 3 righe (ultima riga: 184..191) */
-    rect_bordo(2, 160, 252, 32, C_BORDO, C_PANEL, mainbuf);
-    testo(4, 162, "DIARIO", C_ACCENTO, mainbuf);
+    /* diario (158..191): 2 righe con clip a pannello */
+    rect_bordo(2, 158, 252, 34, C_BORDO, C_PANEL, mainbuf);
+    testo(4, 160, "DIARIO", C_ACCENTO, mainbuf);
     {
-        int vis = g_nlog > 3 ? 3 : g_nlog;
+        int vis = g_nlog > 2 ? 2 : g_nlog;
         for (i = 0; i < vis; i++) {
             int idx = g_nlog - vis + i;
             u16 col = C_TESTO;
@@ -257,7 +279,7 @@ static void draw_top_board(void) {
             else if (g_log[idx].tipo == 3) col = C_ACCENTO;
             else if (g_log[idx].tipo == 4) col = C_SOFT;
             tronca(t, sizeof(t), g_log[idx].testo, 31);
-            testo(4, 168 + i * 8, t, col, mainbuf);
+            testo_clip(4, 170 + i * LINE_H, t, col, mainbuf, 2, 158, 252, 33);
         }
     }
 }
@@ -267,7 +289,8 @@ static void draw_top_board(void) {
 static void draw_top_title(void) {
     fill_screen(mainbuf, C_BG);
     testo(4, 4, "L'ISOLA - SOPRAVVIVENZA", C_ACCENTO, mainbuf);
-    testo_wrap(4, 20, 248, REGOLE_TESTO, C_TESTO, 21, mainbuf);
+    testo_wrap_clip(4, 20, 248, REGOLE_TESTO, C_TESTO, 17,
+                    mainbuf, 4, 18, 248, 172);
 }
 
 /* ============================================================
@@ -277,26 +300,27 @@ static void draw_top_title(void) {
 static void draw_card(int x, int y, int id) {
     char t[24];
     rect_bordo(x, y, 62, 80, C_BORDO, C_PANEL, subbuf);
-    /* nome (max 2 righe da 7 caratteri) */
+    /* le tre aree della carta sono indipendenti e clippate al rettangolo */
+    /* 1) NOME: 2 righe, larghezza della carta, ellissi se troppo lungo */
     {
         const char *nome = carta_nome(id);
         char r1[16], r2[16];
         int i = 0, n1 = 0;
-        while (nome[i] && n1 < 7) r1[n1++] = nome[i++];
+        while (nome[i] && n1 < 6) r1[n1++] = nome[i++];
         if (nome[i]) { r1[6] = '.'; }
         r1[n1] = '\0';
         n1 = 0;
-        while (nome[i] && n1 < 7) r2[n1++] = nome[i++];
+        while (nome[i] && n1 < 6) r2[n1++] = nome[i++];
         if (nome[i]) { if (n1 > 0) r2[n1 - 1] = '.'; }
         r2[n1] = '\0';
-        testo(x + 3, y + 2, r1, C_TESTO, subbuf);
-        if (r2[0]) testo(x + 3, y + 10, r2, C_TESTO, subbuf);
+        testo_clip(x + 3, y + 2, r1, C_TESTO, subbuf, x + 1, y + 1, 60, 19);
+        if (r2[0]) testo_clip(x + 3, y + 12, r2, C_TESTO, subbuf, x + 1, y + 1, 60, 19);
     }
-    /* arte */
-    img_blit(x + 9, y + 19, ASSET_CARD_1 + (id - 1), subbuf);
-    /* effetto */
-    tronca(t, sizeof(t), carta_effetto(id), 5);
-    testo(x + 3, y + 71, t, C_SOFT, subbuf);
+    /* 2) ART: icona centrata sulla carta (banda y+20..y+64) */
+    img_blit(x + 9, y + 20, ASSET_CARD_1 + (id - 1), subbuf);
+    /* 3) EFFETTO: 1 riga sotto l'arte, clippata alla carta */
+    tronca(t, sizeof(t), carta_effetto(id), 6);
+    testo_clip(x + 3, y + 71, t, C_SOFT, subbuf, x + 1, y + 65, 60, 14);
 }
 
 static void draw_bottom_gioca(void) {
@@ -342,8 +366,8 @@ static void draw_bottom_gioca(void) {
 static void draw_bottom_scelta(void) {
     fill_screen(subbuf, C_BG);
     rect_bordo(8, 8, 240, 176, C_BORDO, C_PANEL, subbuf);
-    testo_wrap(12, 12, 224, g_scelta.titolo, C_ACCENTO, 2, subbuf);
-    testo_wrap(12, 30, 224, g_scelta.testo, C_TESTO, 10, subbuf);
+    testo_wrap_clip(12, 12, 224, g_scelta.titolo, C_ACCENTO, 2, subbuf, 8, 8, 240, 176);
+    testo_wrap_clip(12, 30, 224, g_scelta.testo, C_TESTO, 9, subbuf, 8, 28, 240, 94);
     {
         Btn b1, b2;
         b1.x = 16; b1.y = 124; b1.w = 224; b1.h = 24;
@@ -363,10 +387,10 @@ static void draw_bottom_riepilogo(void) {
     testo(12, 12, m, C_ACCENTO, subbuf);
     for (i = 0; i < g_riep_nrighe && i < 11; i++) {
         u16 col = g_riep_tipo[i] == 1 ? C_BENE : (g_riep_tipo[i] == 2 ? C_DANNO : C_TESTO);
-        testo(12, 24 + i * 8, g_riep_righe[i], col, subbuf);
+        testo_clip(12, 24 + i * LINE_H, g_riep_righe[i], col, subbuf, 8, 24, 240, 128);
     }
     snprintf(m, sizeof(m), "Punti Vita: %d / %d", g_riep_pv, PV_MAX);
-    testo(12, 24 + g_riep_nrighe * 8 + 2, m, C_TESTO, subbuf);
+    testo(12, 24 + g_riep_nrighe * LINE_H + 2, m, C_TESTO, subbuf);
     {
         Btn b;
         b.x = 60; b.y = 154; b.w = 136; b.h = 24;
@@ -377,41 +401,46 @@ static void draw_bottom_riepilogo(void) {
 
 static void draw_bottom_finale(void) {
     char m[48];
-    int i;
+    int i, y;
+    const int x = 12;
 
     fill_screen(subbuf, C_BG);
+    /* intestazione */
     if (G.vittoria) {
-        testo(12, 8, "VITTORIA!", C_BENE, subbuf);
-        testo(12, 20, "La nave \xE8 arrivata al giorno 22!", C_TESTO, subbuf);
+        testo(x, 8, "VITTORIA!", C_BENE, subbuf);
+        testo(x, 18, "La nave \xE8 arrivata al giorno 22!", C_TESTO, subbuf);
     } else {
-        testo(12, 8, "SCONFITTA", C_DANNO, subbuf);
-        testo(12, 20, "I PV sono a 0: l'isola vince.", C_TESTO, subbuf);
+        testo(x, 8, "SCONFITTA", C_DANNO, subbuf);
+        testo(x, 18, "I PV sono a 0: l'isola vince.", C_TESTO, subbuf);
     }
 
     snprintf(m, sizeof(m), "Giorni: %d / %d", G.giorno, GIORNI_VITTORIA);
-    testo(12, 30, m, C_TESTO, subbuf);
+    testo(x, 31, m, C_TESTO, subbuf);
     snprintf(m, sizeof(m), "Cibo/Acqua/Legna/Erbe: %d %d %d %d",
              G.risorse[R_CIPO], G.risorse[R_ACQUA], G.risorse[R_LEGNA], G.risorse[R_ERBE]);
-    testo(12, 38, m, C_TESTO, subbuf);
+    testo(x, 41, m, C_TESTO, subbuf);
     snprintf(m, sizeof(m), "Accampamento: %d attivi", G.nacc);
-    testo(12, 46, m, C_TESTO, subbuf);
+    testo(x, 51, m, C_TESTO, subbuf);
 
+    /* obiettivi (max 3 righe) */
+    y = 62;
     for (i = 0; i < G.nobb; i++) {
         int fatto = g_obiettivo_fatto(G.obiettivi[i]) ? 1 : 0;
         snprintf(m, sizeof(m), "[%c] %s", fatto ? 'X' : ' ', g_obiettivo_testo(G.obiettivi[i]));
         tronca(m, sizeof(m), m, 29);
-        testo(12, 54 + i * 8, m, fatto ? C_BENE : C_SOFT, subbuf);
+        testo_clip(x, y + i * LINE_H, m, fatto ? C_BENE : C_SOFT, subbuf, 8, 62, 240, 30);
     }
 
     snprintf(m, sizeof(m), "PUNTEGGIO: %d", g_punteggio_ultimo);
-    testo(12, 80, m, C_ACCENTO, subbuf);
-    if (g_finale_pos >= 0) testo(12, 88, "In TOP 5!", C_BENE, subbuf);
+    testo(x, 94, m, C_ACCENTO, subbuf);
+    if (g_finale_pos >= 0) testo(x, 104, "In TOP 5!", C_BENE, subbuf);
 
-    testo(12, 96, "TOP 5:", C_ACCENTO, subbuf);
-    for (i = 0; i < g_top5_n; i++) {
+    testo(x, 114, "TOP 5:", C_ACCENTO, subbuf);
+    y = 124;
+    for (i = 0; i < g_top5_n && i < 4; i++) {
         snprintf(m, sizeof(m), "%d) %d pt - %d gg - %d PV",
                  i + 1, g_top5[i][0], g_top5[i][1], g_top5[i][2]);
-        testo(12, 104 + i * 8, m, C_TESTO, subbuf);
+        testo_clip(x, y + i * LINE_H, m, C_TESTO, subbuf, 8, 124, 240, 40);
     }
 
     {
@@ -445,7 +474,8 @@ static void draw_bottom_titolo(void) {
 static void draw_bottom_regole(void) {
     fill_screen(subbuf, C_BG);
     testo(12, 8, "REGOLE", C_ACCENTO, subbuf);
-    testo_wrap(12, 20, 232, REGOLE_TESTO, C_TESTO, 20, subbuf);
+    testo_wrap_clip(12, 20, 232, REGOLE_TESTO, C_TESTO, 16,
+                    subbuf, 12, 20, 232, 160);
     testo(4, 182, "B: torna al menu", C_SOFT, subbuf);
 }
 
