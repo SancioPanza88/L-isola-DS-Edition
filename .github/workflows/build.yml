@@ -25,13 +25,14 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/BlocksDS/dswifi.git /tmp/dswifi || \
           git clone --depth 1 https://codeberg.org/BlocksDS/dswifi.git /tmp/dswifi
+          git clone --depth 1 https://github.com/BlocksDS/libnds.git /tmp/bds-libnds
           calico="$(find "$DEVKITPRO" -name 'calico.h' 2>/dev/null | head -1)"
           if [ -n "$calico" ]; then extra=$(dirname "$calico"); else extra="$DEVKITPRO/libnds/include"; fi
           cd /tmp/dswifi
           make -f Makefile.arm9 \
             ARM_NONE_EABI_PATH="$DEVKITARM/bin/" \
             LIBDIRS="$DEVKITPRO/libnds" \
-            INCLUDEDIRS="include source $extra"
+            INCLUDEDIRS="include source $extra $DEVKITPRO/libnds/include /tmp/bds-libnds/include"
           cp lib/libdswifi9_noip.a "$DEVKITPRO/libnds/lib/libdswifi9.a"
           cp include/dswifi9.h include/dswifi_common.h include/dswifi_version.h \
             "$DEVKITPRO/libnds/include/"
