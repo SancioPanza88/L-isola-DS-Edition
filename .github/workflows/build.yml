@@ -24,46 +24,6 @@ jobs:
           arm-none-eabi-gcc --version | head -1
           ls "$DEVKITPRO/libnds/include/" | head
 
-      - name: Build e installa DSWifi col gioco multigiocatore
-        run: |
-          export PATH="$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH"
-          # PIN AL COMMIT PRE-CALICO (b9aabb9, 2025-09-05, ultimo prima della
-          # migrazione sgIP->lwIP): i commit successivi del fork richiedono il
-          # runtime Calico (cothread_yield_irq, libndsCrash - vedi
-          # documentation/internet_mode.md del fork) e NON compilano col libnds
-          # 1.8.3 classico. Questo commit usa swiWaitForVBlank() e ha l'API
-          # multiplayer completa (verificata: tutte le funzioni usate da multi.c).
-          BDS_DSWIFI_SHA=b9aabb9c1611d8570a4d14263ff96f9310a414bb
-          BDS_LIBNDS_SHA=6e6b95ca1bdef9c86e9f597bbe45b233e3b3e03f
-          git clone --quiet --depth 1 --no-checkout \
-            https://github.com/blocksds/dswifi.git /tmp/dswifi || \
-          git clone --quiet --depth 1 --no-checkout \
-            https://codeberg.org/blocksds/dswifi.git /tmp/dswifi
-          git -C /tmp/dswifi fetch --quiet --depth 1 origin $BDS_DSWIFI_SHA
-          git -C /tmp/dswifi checkout --quiet --force $BDS_DSWIFI_SHA
-          # Il build gira col libnds 1.8.3 classico dell'immagine (pre-calico,
-          # newlib, niente uchar.h/cothread): gli header BlocksDS completi sono
-          # incompatibili. Serve UN solo header BlocksDS: nds/arm9/cp15_asm.h
-          # (solo macro, assente nel classico) -> lo copiamo in una dir shim.
-          mkdir -p /tmp/bds-hdr/nds/arm9
-          curl -fsSL -o /tmp/bds-hdr/nds/arm9/cp15_asm.h \
-            "https://raw.githubusercontent.com/blocksds/libnds/$BDS_LIBNDS_SHA/include/nds/arm9/cp15_asm.h"
-          # L'enum WIFI_SYNC della fork collide con fifocommon.h del libnds
-          # classico: rinomina il token della fork (valore 0 invariato) nei
-          # 3 file che lo usano. La modifica e' coerente: vale solo dentro il
-          # protocol fifo della fork, che viene ricompilata tutta insieme.
-          sed -i 's/\bWIFI_SYNC\b/DSWIFI_SYNC/g' \
-            /tmp/dswifi/source/common/wifi_shared.h \
-            /tmp/dswifi/source/arm9/ipc.c \
-            /tmp/dswifi/source/arm7/ipc.c
-          cd /tmp/dswifi
-          make -f Makefile.arm9 \
-            ARM_NONE_EABI_PATH="$DEVKITARM/bin/" \
-            INCLUDEDIRS="include source $DEVKITPRO/libnds/include /tmp/bds-hdr"
-          cp lib/libdswifi9_noip.a "$DEVKITPRO/libnds/lib/libdswifi9.a"
-          cp include/dswifi9.h include/dswifi_common.h include/dswifi_version.h \
-            "$DEVKITPRO/libnds/include/"
-
       - name: Compila LISOLA.nds
         run: |
           export PATH="$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH"
