@@ -7902,9 +7902,9 @@ enum {
     ASSET_ICON_E10 = 44,
     ASSET_ICON_E11 = 45,
     ASSET_ICON_E12 = 46,
-    ASSET_LOGO = 46,
-    ASSET_SFONDO = 47,
-    ASSET_COUNT = 48
+    ASSET_LOGO = 47,
+    ASSET_SFONDO = 48,
+    ASSET_COUNT = 49
 };
 
 static const struct { const unsigned short *px; int w, h; } asset[ASSET_COUNT] = {

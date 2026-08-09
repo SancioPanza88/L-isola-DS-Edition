@@ -121,9 +121,9 @@ def main():
         enum.append("    ASSET_ICON_R%d = %d," % (i, 30 + i))
     for i in range(1, 13):
         enum.append("    ASSET_ICON_E%d = %d," % (i, 34 + i))
-    enum.append("    ASSET_LOGO = 46,")
-    enum.append("    ASSET_SFONDO = 47,")
-    enum.append("    ASSET_COUNT = 48")
+    enum.append("    ASSET_LOGO = 47,")
+    enum.append("    ASSET_SFONDO = 48,")
+    enum.append("    ASSET_COUNT = 49")
 
     lines.append("enum {")
     lines.extend(enum)

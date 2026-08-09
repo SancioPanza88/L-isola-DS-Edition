@@ -369,7 +369,6 @@ int g_calcola_punteggio(int *obiettivi_fatti) {
    false = serve una scelta dell'utente. */
 bool g_evento_risolvi(void) {
     static char scelta_op1[32];
-    char m[LOG_LEN];
     switch (g_evento_id) {
         case 1: { /* Tempesta */
             int costo;

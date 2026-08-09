@@ -9,6 +9,7 @@
 #include <string.h>
 #include "game.h"
 #include "assets.h"
+#include "font_8x8.h"
 #include "ui.h"
 
 /* ---- Colori (macro RGB15 ufficiale di libnds) ---- */
@@ -102,7 +103,7 @@ static void testo(int x, int y, const char *s, u16 col, u16 *buf) {
 /* testo a capo: massimo maxlines righe di larghezza maxw, a partire da (x,y) */
 static int testo_wrap(int x, int y, int maxw, const char *s, u16 col, int maxlines, u16 *buf) {
     char riga[64];
-    int nrighe = 0, i = 0, n = 0;
+    int nrighe = 0, n = 0;
     while (nrighe < maxlines) {
         if (!*s || *s == '\n') {
             riga[n] = '\0';
@@ -357,7 +358,7 @@ static void draw_bottom_riepilogo(void) {
 
 static void draw_bottom_finale(void) {
     char m[48];
-    int i, y;
+    int i;
 
     fill_screen(subbuf, C_BG);
     if (G.vittoria) {
