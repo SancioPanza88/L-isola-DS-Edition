@@ -169,6 +169,12 @@ bool g_obiettivo_fatto(int idx) {
 /* ---- Diario ---- */
 
 void g_log_linea(const char *msg, int tipo) {
+    /* se l'ultima voce e' identica (stesso testo, stesso tipo) non si
+       duplica: evita le "voci ripetute" nel diario (es. piu' tap senza
+       azioni, la stessa carta giocata due volte di fila). */
+    if (g_nlog > 0 && g_log[g_nlog - 1].tipo == tipo &&
+        strcmp(g_log[g_nlog - 1].testo, msg) == 0)
+        return;
     if (g_nlog >= LOG_MAX) {
         int i;
         for (i = 1; i < LOG_MAX; i++) g_log[i - 1] = g_log[i];

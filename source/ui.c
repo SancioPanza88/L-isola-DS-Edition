@@ -12,6 +12,7 @@
 #include "font_8x8.h"
 #include "music_loop.h"
 #include "ui.h"
+#include "multi.h"
 
 /* ---- Colori (RGB15 ufficiale di libnds, con bit 15 = opacita').
    Pannelli medio-chiari: le immagini scure risultano sempre visibili. ---- */
@@ -33,6 +34,7 @@ static u16 *subbuf;
 static int schermo = SCHERMO_TITOLO;
 static int mano_win = 0;
 static int test_ok = 0, test_fail = 0;
+static bool mp_match_started = false; /* parti' la partita in modalita' Wi-Fi */
 
 /* ---- Suono: musica in loop + click (API libnds, vedi nds/arm9/sound.h) ---- */
 static int mus_id = -1;
@@ -63,7 +65,9 @@ static const char *REGOLE_TESTO =
     "7. Capanna e Fal\xF2 proteggono da Tempesta e Freddo; il Cane dal Ladro.\n"
     "8. Rete: +1 Cibo a sera. Amaca: +1 PV. Cuciniera: +1 PV se hai mangiato.\n"
     "9. Le carte in mano a sera finiscono nello scarto, poi tornano nel mazzo.\n"
-    "10. Il gioco salva da solo: CONTINUA riprende la partita.";
+    "10. Il gioco salva da solo: CONTINUA riprende la partita.\n"
+    "11. MULTI (Wi-Fi, 2 DS nella stessa stanza): avvii MULTI dal menu, "
+    "una DS CREA la partita e l'altra la CERCA (senza access point).";
 
 /* ---- Funzioni di disegno ----
    Line-height: ogni riga di testo occupa LINE_H px (glifo 8 px + 2 di aria),
@@ -297,6 +301,17 @@ static void draw_top_board(void) {
     /* diario (158..191): testo a capo e sempre dentro il pannello */
     rect_bordo(2, 158, 252, 34, C_BORDO, C_PANEL, mainbuf);
     testo(4, 160, "DIARIO", C_ACCENTO, mainbuf);
+    if (mp_linked() && mp_avversario()->pronto) {
+        const MpAvversario *av = mp_avversario();
+        if (av->esito == MP_ESITO_GIOCO)
+            snprintf(m, sizeof(m), "VS G%d PV%d %dpt",
+                     av->giorno, av->pv, av->punteggio);
+        else
+            snprintf(m, sizeof(m), "AVV: %s",
+                     av->esito == MP_ESITO_VINTO ? "VINTO!" : "PERSO");
+        testo(256 - (int)strlen(m) * 8 - 2, 160, m,
+              av->esito == MP_ESITO_GIOCO ? C_ACCENTO : C_BENE, mainbuf);
+    }
     {
         int vis = g_nlog > 2 ? 2 : g_nlog;
         for (i = 0; i < vis; i++) {
@@ -317,10 +332,40 @@ static void draw_top_board(void) {
 /* ---- Schermo SUPERIORE a titolo: regole ---- */
 
 static void draw_top_title(void) {
+    char m[48];
     fill_screen(mainbuf, C_BG);
     testo(4, 4, "L'ISOLA - SOPRAVVIVENZA", C_ACCENTO, mainbuf);
     testo_wrap_clip(4, 20, 248, REGOLE_TESTO, C_TESTO, 17,
                     mainbuf, 4, 18, 248, 172);
+    snprintf(m, sizeof(m), "Autotest: %d OK %d FAIL", test_ok, test_fail);
+    testo(4, 184, m, test_fail == 0 ? C_BENE : C_DANNO, mainbuf);
+}
+
+/* ---- Schermo SUPERIORE durante le schermate Wi-Fi ---- */
+
+static const char *wifi_stato_testo(void) {
+    switch (mp_stato()) {
+        case MP_HOST_WAIT:      return "HOST: in attesa del 2o giocatore...";
+        case MP_CLIENT_SEARCH:  return "CLIENT: cerco la partita...";
+        case MP_CLIENT_CONNECT: return "CLIENT: mi sto collegando...";
+        case MP_LINKED:         return "COLLEGATI: in partita!";
+        case MP_FAILED:         return "ERRORE: riprova.";
+        default:                return "";
+    }
+}
+
+static void draw_top_wifi(void) {
+    char m[64];
+    fill_screen(mainbuf, C_BG);
+    testo(2, 2, "MULTIGIOCATORE WIFI", C_ACCENTO, mainbuf);
+    testo(2, 16, "Due DS vicine si collegano da sole,", C_TESTO, mainbuf);
+    testo(2, 26, "senza access point. Su una DS:", C_TESTO, mainbuf);
+    testo(2, 36, "'CREA', sull'altra 'CERCA'.", C_TESTO, mainbuf);
+    rect_bordo(2, 50, 252, 34, C_BORDO, C_PANEL, mainbuf);
+    snprintf(m, sizeof(m), "STATO: %s", wifi_stato_testo());
+    testo(4, 56, m, C_ACCENTO, mainbuf);
+    testo(4, 66, "In partita seguitevi dall'alto:", C_SOFT, mainbuf);
+    testo(4, 76, "a destra del DIARIO c'e' l'avversario.", C_SOFT, mainbuf);
 }
 
 /* ============================================================
@@ -482,6 +527,15 @@ static void draw_bottom_finale(void) {
     }
 
     snprintf(m, sizeof(m), "PUNTEGGIO: %d", g_punteggio_ultimo);
+    if (mp_linked() && mp_avversario()->pronto) {
+        int v = mp_verdetto(G.vittoria);
+        if (v < 0)
+            snprintf(m + strlen(m), sizeof(m) - strlen(m),
+                     "   VS: in corso");
+        else
+            snprintf(m + strlen(m), sizeof(m) - strlen(m),
+                     "   VS: %s", v ? "VINTO" : "PERSO");
+    }
     testo(x, 94, m, C_ACCENTO, subbuf);
     if (g_finale_pos >= 0) testo(x, 104, "In TOP 5!", C_BENE, subbuf);
 
@@ -501,24 +555,63 @@ static void draw_bottom_finale(void) {
 }
 
 static void draw_bottom_titolo(void) {
-    char m[48];
     Btn b;
     img_blit(0, 0, ASSET_SFONDO, subbuf);
     img_blit(80, 8, ASSET_LOGO, subbuf);
     testo(100, 62, "L'ISOLA", C_ACCENTO, subbuf);
     testo(76, 72, "SOPRAVVIVENZA", C_TESTO, subbuf);
 
-    b.x = 28; b.y = 96; b.w = 200; b.h = 26;
+    b.x = 28; b.w = 200; b.h = 22;
+    b.y = 88;
     draw_btn(&b, "NUOVA PARTITA", C_ACCENTO, C_TESTO, subbuf);
     if (g_salva_esiste()) {
-        b.y = 126;
+        b.y = 114;
         draw_btn(&b, "CONTINUA", C_BENE, C_TESTO, subbuf);
     }
-    b.y = 156;
+    b.y = 140;
+    draw_btn(&b, "MULTI WIFI", C_BENE, C_TESTO, subbuf);
+    b.y = 166;
     draw_btn(&b, "REGOLE", C_BORDO, C_TESTO, subbuf);
 
-    snprintf(m, sizeof(m), "Autotest: %d OK %d FAIL", test_ok, test_fail);
-    testo(4, 184, m, test_fail == 0 ? C_BENE : C_DANNO, subbuf);
+    testo(4, 184, "B: continua  START: spegni", C_SOFT, subbuf);
+}
+
+static void draw_bottom_wifi(void) {
+    Btn b;
+    fill_screen(subbuf, C_BG);
+    testo(12, 8, "GIOCO A 2 (WI-FI)", C_ACCENTO, subbuf);
+    testo(12, 20, "Decidete chi CREA e chi CERCA.", C_TESTO, subbuf);
+    testo(12, 30, "State vicini e premi il tasto.", C_SOFT, subbuf);
+
+    b.x = 28; b.w = 200; b.h = 30;
+    b.y = 52;
+    draw_btn(&b, "CREA PARTITA (HOST)", C_BENE, C_TESTO, subbuf);
+    b.y = 90;
+    draw_btn(&b, "CERCA PARTITA (CLIENT)", C_ACCENTO, C_TESTO, subbuf);
+    b.y = 140; b.h = 24;
+    draw_btn(&b, "INDIETRO", C_BORDO, C_TESTO, subbuf);
+
+    testo(4, 184, "A: crea   B: indietro", C_SOFT, subbuf);
+}
+
+static void draw_bottom_wifi_attesa(void) {
+    char m[64];
+    Btn b;
+    fill_screen(subbuf, C_BG);
+    if (mp_is_host()) {
+        testo(12, 12, "PARTITA CREATA!", C_BENE, subbuf);
+        testo(12, 24, "In attesa della seconda DS...", C_TESTO, subbuf);
+    } else {
+        testo(12, 12, "CERCA IN CORSO...", C_ACCENTO, subbuf);
+        testo(12, 24, "Sull'altra DS: MULTI > CREA.", C_TESTO, subbuf);
+    }
+    snprintf(m, sizeof(m), "Stato: %s", wifi_stato_testo());
+    testo(12, 40, m, C_SOFT, subbuf);
+    testo(12, 52, "Quando vi trovate partite da soli.", C_TESTO, subbuf);
+
+    b.x = 44; b.y = 152; b.w = 168; b.h = 24;
+    draw_btn(&b, "ANNULLA", C_DANNO, C_TESTO, subbuf);
+    testo(4, 184, "A/B: annulla", C_SOFT, subbuf);
 }
 
 static void draw_bottom_regole(void) {
@@ -531,6 +624,7 @@ static void draw_bottom_regole(void) {
 
 static void draw_top(void) {
     if (schermo == SCHERMO_TITOLO || schermo == SCHERMO_REGOLE) draw_top_title();
+    else if (schermo == SCHERMO_WIFI || schermo == SCHERMO_WIFI_ATT) draw_top_wifi();
     else draw_top_board();
 }
 
@@ -542,6 +636,8 @@ static void draw_bottom(void) {
         case SCHERMO_RIEPILOGO: draw_bottom_riepilogo(); break;
         case SCHERMO_FINALE: draw_bottom_finale(); break;
         case SCHERMO_REGOLE: draw_bottom_regole(); break;
+        case SCHERMO_WIFI: draw_bottom_wifi(); break;
+        case SCHERMO_WIFI_ATT: draw_bottom_wifi_attesa(); break;
     }
 }
 
@@ -588,10 +684,11 @@ static void tap(int x, int y) {
 
     switch (schermo) {
         case SCHERMO_TITOLO:
-            b.x = 28; b.y = 96; b.w = 200; b.h = 26;
+            b.x = 28; b.w = 200; b.h = 22;
+            b.y = 88;
             if (in_btn(&b, x, y)) { nuova_partita_ui(); return; }
             if (g_salva_esiste()) {
-                b.y = 126;
+                b.y = 114;
                 if (in_btn(&b, x, y)) {
                     if (g_carica()) {
                         mano_win = 0;
@@ -600,8 +697,40 @@ static void tap(int x, int y) {
                     return;
                 }
             }
-            b.y = 156;
+            b.y = 140;
+            if (in_btn(&b, x, y)) {
+                mp_match_started = false;
+                schermo = SCHERMO_WIFI;
+                return;
+            }
+            b.y = 166;
             if (in_btn(&b, x, y)) schermo = SCHERMO_REGOLE;
+            return;
+
+        case SCHERMO_WIFI:
+            b.x = 28; b.w = 200; b.h = 30;
+            b.y = 52;
+            if (in_btn(&b, x, y)) {
+                mp_start_host();
+                schermo = SCHERMO_WIFI_ATT;
+                return;
+            }
+            b.y = 90;
+            if (in_btn(&b, x, y)) {
+                mp_start_client();
+                schermo = SCHERMO_WIFI_ATT;
+                return;
+            }
+            b.y = 140; b.h = 24;
+            if (in_btn(&b, x, y)) schermo = SCHERMO_TITOLO;
+            return;
+
+        case SCHERMO_WIFI_ATT:
+            b.x = 44; b.y = 152; b.w = 168; b.h = 24;
+            if (in_btn(&b, x, y)) {
+                mp_stop();
+                schermo = SCHERMO_WIFI;
+            }
             return;
 
         case SCHERMO_GIOCA:
@@ -690,6 +819,14 @@ static void tasto_a(void) {
             break;
         case SCHERMO_FINALE: nuova_partita_ui(); break;
         case SCHERMO_REGOLE: schermo = SCHERMO_TITOLO; break;
+        case SCHERMO_WIFI:
+            mp_start_host();
+            schermo = SCHERMO_WIFI_ATT;
+            break;
+        case SCHERMO_WIFI_ATT:
+            mp_stop();
+            schermo = SCHERMO_WIFI;
+            break;
     }
 }
 
@@ -710,6 +847,13 @@ static void tasto_b(void) {
             eval_state();
             break;
         case SCHERMO_REGOLE: schermo = SCHERMO_TITOLO; break;
+        case SCHERMO_WIFI:
+            schermo = SCHERMO_TITOLO;
+            break;
+        case SCHERMO_WIFI_ATT:
+            mp_stop();
+            schermo = SCHERMO_WIFI;
+            break;
         case SCHERMO_FINALE: break;
         case SCHERMO_RIEPILOGO: break;
     }
@@ -717,6 +861,8 @@ static void tasto_b(void) {
 
 static void tasto_start(void) {
     if (schermo != SCHERMO_TITOLO) {
+        mp_stop();
+        mp_match_started = false;
         g_salva();
         schermo = SCHERMO_TITOLO;
     }
@@ -745,6 +891,23 @@ void ui_loop(void) {
     ui_frames++;
     scanKeys();
     down = keysDown();
+
+    /* Wi-Fi: stato della rete avanza a ogni frame (non blocca). */
+    mp_poll();
+    if (schermo == SCHERMO_WIFI_ATT && mp_linked() &&
+        !mp_match_started) {
+        /* due console collegate: via alla partita a 2 */
+        mp_match_started = true;
+        g_salva_elimina();
+        g_nuova_partita();
+        eval_state();
+        redraw = true;
+    } else if (schermo == SCHERMO_WIFI_ATT && mp_stato() == MP_OFF &&
+               !mp_match_started) {
+        /* host sparito o annullata: torniamo al menu Wi-Fi */
+        schermo = SCHERMO_WIFI;
+        redraw = true;
+    }
 
     /* al primo input si mescola il seme del RNG (varieta tra le partite) */
     if (down && !seeded) {

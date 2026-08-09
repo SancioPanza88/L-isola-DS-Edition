@@ -1,4 +1,4 @@
-# L'ISOLA — Sopravvivenza (NDS Edition)
+﻿# L'ISOLA — Sopravvivenza (NDS Edition)
 
 Porting **homebrew per Nintendo DS** del gioco di carte web [L'Isola](https://github.com/SancioPanza88/L-Isola): sopravvivi 21 giorni su un'isola deserta e al giorno 22 arriva la nave di soccorso.
 
@@ -26,6 +26,19 @@ Il file `LISOLA.nds` viene compilato automaticamente da **GitHub Actions**:
 | **A** | Conferma (avanti / prima scelta) |
 | **B** | Pentola di coccio / seconda scelta / torna al menu |
 | **START** | Torna al menu (salva) |
+
+## Multigiocatore (2 DS, Wi-Fi locale)
+
+Due console si sfidano: chi sopravvive meglio (più punti a fine partita) vince. Non serve alcun access point, funziona solo **tra console vicine** (Nintendo DS / DS Lite / DSi con flashcart, o emulatore).
+
+1. Su una DS: menu → **MULTI WIFI → CREA PARTITA (HOST)**.
+2. Sull'altra: menu → **MULTI WIFI → CERCA PARTITA (CLIENT)**.
+3. Quando le console si trovano, la partita parte da sola dal giorno 1 per entrambe.
+4. Durante il gioco, in alto a destra del DIARIO vedi lo stato dell'avversario (giorno, PV, punti). Nella schermata finale compare il confronto **VS: VINTO/PERSO**.
+
+Nota: il **Download Play** di Nintendo non è riproducibile da homebrew (richiede le chiavi RSA di Nintendo): questa è la modalità Wi-Fi peer-to-peer documentata di DSWifi (local multiplayer mode, fino a 15 console). Per lo sviluppo serve la **fork BlocksDS di DSWifi** (le API multogiocatore): la build automatica la installa prima di compilare.
+
+**Test su emulatore**: apri **melonDS** due volte (due finestre) e in entrambe attiva *System → Multiplayer* (collega le due istanze via LAN); poi avvia il multigiocatore come sull'hardware reale.
 
 ## Salvataggio
 
@@ -57,6 +70,7 @@ L-isola-DS-Edition/
 ├── source/
 │   ├── main.c                    init libnds, due schermi bitmap, loop
 │   ├── game.c / game.h           porting della logica (carte, eventi, regole)
+│   ├── multi.c / multi.h         multiplayer Wi-Fi locale (DSWifi MP mode)
 │   ├── ui.c                      rendering 2 schermi + touch
 │   ├── save.c                    salvataggio/record su microSD (libfat)
 │   ├── assets.h                  PNG convertiti in RGB555 (generato)

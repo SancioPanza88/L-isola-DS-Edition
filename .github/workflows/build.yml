@@ -21,6 +21,14 @@ jobs:
           arm-none-eabi-gcc --version | head -1
           ls "$DEVKITPRO/libnds/include/" | head
 
+      - name: Installa DSWifi col supporto multigiocatore
+        run: |
+          git clone --depth 1 https://github.com/BlocksDS/dswifi.git /tmp/dswifi || \
+          git clone --depth 1 https://codeberg.org/BlocksDS/dswifi.git /tmp/dswifi
+          cd /tmp/dswifi
+          make -j2 all
+          make install
+
       - name: Compila LISOLA.nds
         run: |
           make clean
