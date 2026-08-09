@@ -40,12 +40,22 @@ def rgb555(r, g, b):
     return 0x8000 | (r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10)
 
 
-def fit(img, tw, th, bg):
-    """Ridimensiona in base al piu piccolo dei due lati, centra, letterbox."""
+def fit(img, tw, th, bg, cover=False):
+    """Adatta l'immagine a twxth.
+    cover=True: ritaglia al centro per riempire tutto (niente distorsione).
+    cover=False: scala in base al lato minore, centra e letterbox sul colore bg.
+    In riduzione usa LANCZOS, in ingrandimento NEAREST (pixel art fedele)."""
     w, h = img.size
+    if cover:
+        scale = max(tw / w, th / h)
+        nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
+        img = img.resize((nw, nh), Image.LANCZOS)
+        x, y = (nw - tw) // 2, (nh - th) // 2
+        return img.crop((x, y, x + tw, y + th))
     scale = min(tw / w, th / h)
     nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
-    img = img.resize((nw, nh), Image.NEAREST)
+    method = Image.LANCZOS if nw < w else Image.NEAREST
+    img = img.resize((nw, nh), method)
     canvas = Image.new("RGB", (tw, th), bg)
     canvas.paste(img, ((tw - nw) // 2, (th - nh) // 2))
     return canvas
@@ -111,7 +121,7 @@ def main():
         add("icon_e%d" % i, fit(load("icon_e%d" % i), ICON_E_W, ICON_E_H, BG_COL))
 
     add("logo", fit(load("logo"), LOGO_MAX_W, LOGO_MAX_H, BG_COL))
-    add("sfondo", load("sfondo").resize((BG_W, BG_H), Image.NEAREST))
+    add("sfondo", fit(load("sfondo"), BG_W, BG_H, BG_COL, cover=True))
 
     # Indice per il blit: enum ASSET_* (la carta id -> ASSET_CARD_1 + (id-1))
     enum = []

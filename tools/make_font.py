@@ -31,20 +31,33 @@ def find_font():
     raise SystemExit("Nessun TTF trovato tra: %s" % ", ".join(FONTS))
 
 
+def rasterize(font, c):
+    """Rende il glifo a 32px, lo scala a 8x8 conservando l'aspetto e lo
+    centra nel reticolo. 1 bit, soglia 128."""
+    cell = 32
+    img = Image.new("L", (cell, cell), 0)
+    d = ImageDraw.Draw(img)
+    d.text((0, 0), chr(c), font=font, fill=255)
+    bbox = img.getbbox()
+    if bbox is None:
+        return Image.new("L", (W, H), 0)
+    crop = img.crop(bbox)
+    scale = min(W / crop.width, H / crop.height)
+    nw = max(1, int(round(crop.width * scale)))
+    nh = max(1, int(round(crop.height * scale)))
+    crop = crop.resize((nw, nh), Image.LANCZOS)
+    out = Image.new("L", (W, H), 0)
+    out.paste(crop, ((W - nw) // 2, (H - nh) // 2))
+    px = out.load()
+    for y in range(H):
+        for x in range(W):
+            px[x, y] = 255 if px[x, y] >= 128 else 0
+    return out
+
+
 def load_glyphs(path):
-    font = ImageFont.truetype(path, 9)
-    glyphs = {}
-    for c in CHARS:
-        img = Image.new("L", (W, H), 0)
-        d = ImageDraw.Draw(img)
-        d.text((-1, -1), chr(c), font=font, fill=255)
-        # soglia: rende il glifo netto (1 bit)
-        px = img.load()
-        for y in range(H):
-            for x in range(W):
-                px[x, y] = 255 if px[x, y] >= 128 else 0
-        glyphs[c] = img
-    return glyphs
+    font = ImageFont.truetype(path, 32)
+    return {c: rasterize(font, c) for c in CHARS}
 
 
 def build_preview(glyphs):
