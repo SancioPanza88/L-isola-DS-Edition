@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    Interfaccia NDS: schermo superiore (stato) e inferiore (touch)
    Rendering a richiesta (nessun frame loop): si ridisegna solo
    quando serve. Colori e font definiti qui sotto.
@@ -10,6 +10,7 @@
 #include "game.h"
 #include "assets.h"
 #include "font_8x8.h"
+#include "music_loop.h"
 #include "ui.h"
 
 /* ---- Colori (RGB15 ufficiale di libnds, con bit 15 = opacita') ---- */
@@ -31,6 +32,24 @@ static u16 *subbuf;
 static int schermo = SCHERMO_TITOLO;
 static int mano_win = 0;
 static int test_ok = 0, test_fail = 0;
+
+/* ---- Suono: musica in loop + click (API libnds, vedi nds/arm9/sound.h) ---- */
+static int mus_id = -1;
+
+static void musica_start(void) {
+    if (mus_id < 0)
+        mus_id = soundPlaySample(music_loop, SoundFormat_16Bit,
+                                 sizeof(music_loop), MUSIC_RATE, 70, 64, true, 0);
+}
+
+static void musica_stop(void) {
+    if (mus_id >= 0) { soundKill(mus_id); mus_id = -1; }
+}
+
+static void sfx_clic(void) {
+    soundPlaySample(sfx_click, SoundFormat_16Bit,
+                    sizeof(sfx_click), MUSIC_RATE, 100, 64, false, 0);
+}
 
 /* ---- Regole (schermata titolo e regole) ---- */
 static const char *REGOLE_TESTO =
@@ -92,7 +111,7 @@ static void testo(int x, int y, const char *s, u16 col, u16 *buf) {
             for (b = 0; b < 8; b++) {
                 int px = x0 + b, py = y0 + i;
                 if (!(riga & (0x80 >> b))) continue;
-                if (px < 0 || px >= 256) continue;
+                if (px < 0 || px >= 256 || py < 0 || py >= 192) continue;
                 buf[py * 256 + px] = col;
             }
         }
@@ -206,29 +225,29 @@ static void draw_top_board(void) {
     }
 
     /* evento del giorno */
-    rect_bordo(2, 46, 252, 64, C_BORDO, C_PANEL, mainbuf);
+    rect_bordo(2, 46, 252, 54, C_BORDO, C_PANEL, mainbuf);
     testo(4, 48, "EVENTO", C_ACCENTO, mainbuf);
     if (G.giorno > 0 && g_evento_id >= 1 && g_evento_id <= 12) {
-        img_blit(4, 60, ASSET_ICON_E1 + (g_evento_id - 1), mainbuf);
-        testo_wrap(32, 58, 216, evento_testo(g_evento_id), C_TESTO, 6, mainbuf);
+        img_blit(4, 58, ASSET_ICON_E1 + (g_evento_id - 1), mainbuf);
+        testo_wrap(32, 56, 216, evento_testo(g_evento_id), C_TESTO, 5, mainbuf);
     }
 
-    /* accampamento */
-    rect_bordo(2, 112, 252, 36, C_BORDO, C_PANEL, mainbuf);
-    testo(4, 114, "ACCAMPAMENTO", C_ACCENTO, mainbuf);
+    /* accampamento: carte da 44px, sotto la ZONA boom â†’ niente sovrapposizione col diario */
+    rect_bordo(2, 102, 252, 56, C_BORDO, C_PANEL, mainbuf);
+    testo(4, 104, "ACCAMPAMENTO", C_ACCENTO, mainbuf);
     if (G.nacc == 0) {
-        testo(4, 124, "Nessun attivo. Gioca STRUMENTI o", C_SOFT, mainbuf);
-        testo(4, 132, "PERSONE per metterli qui.", C_SOFT, mainbuf);
+        testo(4, 118, "Nessun attivo. Gioca STRUMENTI o", C_SOFT, mainbuf);
+        testo(4, 126, "PERSONE per metterli qui.", C_SOFT, mainbuf);
     } else {
         for (i = 0; i < G.nacc && i < 13; i++)
-            img_blit(4 + i * 18, 124, ASSET_CARD_1 + (G.acc[i] - 1), mainbuf);
+            img_blit(2 + i * 15, 106, ASSET_CARD_1 + (G.acc[i] - 1), mainbuf);
     }
 
-    /* diario */
-    rect_bordo(2, 150, 252, 40, C_BORDO, C_PANEL, mainbuf);
-    testo(4, 152, "DIARIO", C_ACCENTO, mainbuf);
+    /* diario: sotto l'accampamento, 3 righe (ultima riga: 184..191) */
+    rect_bordo(2, 160, 252, 32, C_BORDO, C_PANEL, mainbuf);
+    testo(4, 162, "DIARIO", C_ACCENTO, mainbuf);
     {
-        int vis = g_nlog > 4 ? 4 : g_nlog;
+        int vis = g_nlog > 3 ? 3 : g_nlog;
         for (i = 0; i < vis; i++) {
             int idx = g_nlog - vis + i;
             u16 col = C_TESTO;
@@ -238,7 +257,7 @@ static void draw_top_board(void) {
             else if (g_log[idx].tipo == 3) col = C_ACCENTO;
             else if (g_log[idx].tipo == 4) col = C_SOFT;
             tronca(t, sizeof(t), g_log[idx].testo, 31);
-            testo(4, 159 + i * 8, t, col, mainbuf);
+            testo(4, 168 + i * 8, t, col, mainbuf);
         }
     }
 }
@@ -332,7 +351,7 @@ static void draw_bottom_scelta(void) {
         draw_btn(&b1, g_scelta.op1, C_ACCENTO, C_TESTO, subbuf);
         draw_btn(&b2, g_scelta.op2, C_DANNO, C_TESTO, subbuf);
     }
-    testo(4, 186, "A = prima scelta   B = seconda", C_SOFT, subbuf);
+    testo(4, 182, "A = prima scelta   B = seconda", C_SOFT, subbuf);
 }
 
 static void draw_bottom_riepilogo(void) {
@@ -353,7 +372,7 @@ static void draw_bottom_riepilogo(void) {
         b.x = 60; b.y = 154; b.w = 136; b.h = 24;
         draw_btn(&b, "AVANTI", C_BENE, C_TESTO, subbuf);
     }
-    testo(4, 186, "A = avanti", C_SOFT, subbuf);
+    testo(4, 182, "A = avanti", C_SOFT, subbuf);
 }
 
 static void draw_bottom_finale(void) {
@@ -420,14 +439,14 @@ static void draw_bottom_titolo(void) {
     draw_btn(&b, "REGOLE", C_BORDO, C_TESTO, subbuf);
 
     snprintf(m, sizeof(m), "Autotest: %d OK %d FAIL", test_ok, test_fail);
-    testo(4, 186, m, test_fail == 0 ? C_BENE : C_DANNO, subbuf);
+    testo(4, 182, m, test_fail == 0 ? C_BENE : C_DANNO, subbuf);
 }
 
 static void draw_bottom_regole(void) {
     fill_screen(subbuf, C_BG);
     testo(12, 8, "REGOLE", C_ACCENTO, subbuf);
     testo_wrap(12, 20, 232, REGOLE_TESTO, C_TESTO, 20, subbuf);
-    testo(4, 186, "B: torna al menu", C_SOFT, subbuf);
+    testo(4, 182, "B: torna al menu", C_SOFT, subbuf);
 }
 
 static void draw_top(void) {
@@ -632,6 +651,7 @@ void ui_init(int bg_top, int bg_sub, int ok, int fail) {
     subbuf = (u16 *)bgGetGfxPtr(bg_sub);
     test_ok = ok;
     test_fail = fail;
+    musica_start();
     draw_top();
     draw_bottom();
 }
@@ -662,7 +682,10 @@ void ui_loop(void) {
     if (down & KEY_B) { tasto_b(); redraw = true; }
     if (down & KEY_START) { tasto_start(); redraw = true; }
 
+    if (down) sfx_clic();
+
     if (redraw) {
+        if (schermo == SCHERMO_TITOLO) musica_start(); else musica_stop();
         draw_top();
         draw_bottom();
     }

@@ -61,20 +61,33 @@ def fit(img, tw, th, bg, cover=False):
     return canvas
 
 
-def to_565(img):
+def focus(img, frac=0.78):
+    """Ritaglia al centro un quadrato (lato = frac*lato minore): isola il
+    soggetto (emblema della carta) e scarta il bordo scuro del PNG originale."""
+    w, h = img.size
+    side = min(w, h) * frac
+    x = int((w - side) / 2)
+    y = int((h - side) / 2)
+    return img.crop((x, y, x + side, y + side))
+
+
+def to_565(img, gain=1.0):
     w, h = img.size
     px = img.load()
     out = []
     for y in range(h):
         for x in range(w):
             r, g, b = px[x, y][:3]
+            r = min(255, int(r * gain))
+            g = min(255, int(g * gain))
+            b = min(255, int(b * gain))
             out.append(rgb555(r, g, b))
     return out
 
 
-def emit(name, img, lines):
+def emit(name, img, lines, gain=1.0):
     w, h = img.size
-    data = to_565(img)
+    data = to_565(img, gain)
     lines.append("static const unsigned short %s[%d] = {" % (name, len(data)))
     for i in range(0, len(data), 16):
         chunk = data[i:i + 16]
@@ -101,24 +114,24 @@ def main():
 
     entries = []
 
-    def add(tag, img):
+    def add(tag, img, gain=1.0):
         name = "assets_%s" % tag
-        emit(name, img, lines)
+        emit(name, img, lines, gain)
         entries.append((name, img.size))
         lines.append("")
 
-    # Carte
+    # Carte: soggetto centrale + un filo di luce in piu' (chiarezza a 44px)
     for i in range(1, 31):
         img = load("c%02d" % i)
-        add("c%02d" % i, fit(img, CARD_W, CARD_H, PANEL))
+        add("c%02d" % i, fit(focus(img), CARD_W, CARD_H, PANEL), 1.15)
 
-    add("retro", fit(load("retro"), CARD_W, CARD_H, PANEL))
+    add("retro", fit(focus(load("retro")), CARD_W, CARD_H, PANEL), 1.15)
 
     for i in range(1, 5):
-        add("icon_r%d" % i, fit(load("icon_r%d" % i), ICON_R_W, ICON_R_H, BG_COL))
+        add("icon_r%d" % i, fit(focus(load("icon_r%d" % i)), ICON_R_W, ICON_R_H, BG_COL), 1.1)
 
     for i in range(1, 13):
-        add("icon_e%d" % i, fit(load("icon_e%d" % i), ICON_E_W, ICON_E_H, BG_COL))
+        add("icon_e%d" % i, fit(focus(load("icon_e%d" % i)), ICON_E_W, ICON_E_H, BG_COL), 1.1)
 
     add("logo", fit(load("logo"), LOGO_MAX_W, LOGO_MAX_H, BG_COL))
     add("sfondo", fit(load("sfondo"), BG_W, BG_H, BG_COL, cover=True))

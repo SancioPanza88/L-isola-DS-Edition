@@ -24,6 +24,8 @@ int main(void) {
 
     save_init();
 
+    soundEnable();
+
     /* autoverifica (equivalente di index.html?test) */
     g_test_automatici(&ok, &fail);
 
