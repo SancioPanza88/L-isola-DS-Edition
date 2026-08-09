@@ -13,17 +13,18 @@
 #include "music_loop.h"
 #include "ui.h"
 
-/* ---- Colori (RGB15 ufficiale di libnds, con bit 15 = opacita') ---- */
-#define C_BG      (BIT(15) | RGB15(2,7,12))     /* blu oceano scuro */
-#define C_PANEL   (BIT(15) | RGB15(6,13,19))
-#define C_PANEL2  (BIT(15) | RGB15(4,10,15))
-#define C_BORDO   (BIT(15) | RGB15(13,24,31))
+/* ---- Colori (RGB15 ufficiale di libnds, con bit 15 = opacita').
+   Pannelli medio-chiari: le immagini scure risultano sempre visibili. ---- */
+#define C_BG      (BIT(15) | RGB15(4,8,13))     /* blu oceano scuro */
+#define C_PANEL   (BIT(15) | RGB15(6,11,18))
+#define C_PANEL2  (BIT(15) | RGB15(5,9,14))
+#define C_BORDO   (BIT(15) | RGB15(14,22,30))
 #define C_TESTO   (BIT(15) | RGB15(31,30,25))   /* pergamena */
-#define C_SOFT    (BIT(15) | RGB15(18,22,25))
-#define C_BENE    (BIT(15) | RGB15(15,28,14))
-#define C_DANNO   (BIT(15) | RGB15(31,17,14))
-#define C_ACCENTO (BIT(15) | RGB15(31,24,9))
-#define C_DIM     (BIT(15) | RGB15(11,13,15))
+#define C_SOFT    (BIT(15) | RGB15(20,24,27))
+#define C_BENE    (BIT(15) | RGB15(20,30,19))
+#define C_DANNO   (BIT(15) | RGB15(31,20,16))
+#define C_ACCENTO (BIT(15) | RGB15(31,26,12))
+#define C_DIM     (BIT(15) | RGB15(13,15,17))
 #define C_CUORE   (BIT(15) | RGB15(30,10,10))
 
 /* ---- Stato UI ---- */
@@ -137,31 +138,52 @@ static void testo_clip(int x, int y, const char *s, u16 col, u16 *buf,
     }
 }
 
-/* testo a capo: massimo maxlines righe di larghezza maxw, a partire da (x,y).
-   Con clip attivo le righe si fermano al bordo basso del riquadro. */
+/* testo a capo PER PAROLE INTERE: una parola non viene mai spezzata a meta'.
+   Se una singola parola e' piu' larga della riga, staziona su una riga sola e
+   il clip laterale la tiene comunque dentro il pannello. */
 static int testo_wrap_clip(int x, int y, int maxw, const char *s, u16 col,
                            int maxlines, u16 *buf, int cx, int cy, int cw, int ch) {
     char riga[64];
-    int nrighe = 0, n = 0;
-    while (nrighe < maxlines) {
-        if (y + (nrighe + 1) * LINE_H > cy + ch) break; /* clip basso del pannello */
-        if (!*s || *s == '\n') {
-            riga[n] = '\0';
-            testo_clip(x, y + nrighe * LINE_H, riga, col, buf, cx, cy, cw, ch);
-            nrighe++;
-            if (*s == '\n') s++;
-            n = 0;
-            if (!*s) break;
+    const char *p = s;
+    int nrighe = 0;
+
+    riga[0] = '\0';
+    while (*p && nrighe < maxlines) {
+        if (*p == '\n') {
+            if (riga[0]) {
+                if (y + (nrighe + 1) * LINE_H > cy + ch) break;
+                testo_clip(x, y + nrighe * LINE_H, riga, col, buf, cx, cy, cw, ch);
+                nrighe++;
+                riga[0] = '\0';
+            }
+            p++;
             continue;
         }
-        if (n > 0 && (n + 1) * LINE_GSH > maxw) {
-            riga[n] = '\0';
-            testo_clip(x, y + nrighe * LINE_H, riga, col, buf, cx, cy, cw, ch);
-            nrighe++;
-            n = 0;
-            continue;
+        if (*p == ' ') { p++; continue; } /* spazi multipli = uno solo */
+
+        {
+            int wlen = 0;
+            while (p[wlen] && p[wlen] != ' ' && p[wlen] != '\n' && wlen < 60) wlen++;
+            {
+                int curv = (int)strlen(riga);
+                if (curv > 0 && (curv + 1 + wlen) * LINE_GSH > maxw) {
+                    if (y + (nrighe + 1) * LINE_H > cy + ch) break;
+                    testo_clip(x, y + nrighe * LINE_H, riga, col, buf, cx, cy, cw, ch);
+                    nrighe++;
+                    riga[0] = '\0';
+                    curv = 0;
+                }
+                if (curv > 0) { riga[curv] = ' '; riga[curv + 1] = '\0'; }
+                memcpy(riga + strlen(riga), p, (size_t)wlen);
+                riga[strlen(riga) + wlen] = '\0';
+            }
+            p += wlen;
         }
-        riga[n++] = *s++;
+    }
+    if (riga[0] && nrighe < maxlines &&
+        y + (nrighe + 1) * LINE_H <= cy + ch) {
+        testo_clip(x, y + nrighe * LINE_H, riga, col, buf, cx, cy, cw, ch);
+        nrighe++;
     }
     return nrighe;
 }
@@ -254,18 +276,25 @@ static void draw_top_board(void) {
                         mainbuf, 30, 45, 222, 58);
     }
 
-    /* accampamento (104..162): carte 44px dentro il pannello */
+    /* accampamento (104..162): carte intere, mai sovrapposte.
+       Al massimo 4 carte affiancate + indicatore di altre. */
     rect_bordo(2, 104, 252, 58, C_BORDO, C_PANEL, mainbuf);
     testo(4, 106, "ACCAMPAMENTO", C_ACCENTO, mainbuf);
     if (G.nacc == 0) {
         testo(4, 116, "Nessun attivo. Gioca STRUMENTI o", C_SOFT, mainbuf);
         testo(4, 126, "PERSONE per metterli qui.", C_SOFT, mainbuf);
     } else {
-        for (i = 0; i < G.nacc && i < 13; i++)
-            img_blit(2 + i * 15, 114, ASSET_CARD_1 + (G.acc[i] - 1), mainbuf);
+        int mostrate = G.nacc > 4 ? 4 : G.nacc;
+        for (i = 0; i < mostrate; i++) {
+            img_blit(2 + i * 46, 114, ASSET_CARD_1 + (G.acc[i] - 1), mainbuf);
+        }
+        if (G.nacc > 4) {
+            snprintf(m, sizeof(m), "+%d", G.nacc - 4);
+            testo(240 - (int)strlen(m) * LINE_GSH, 122, m, C_SOFT, mainbuf);
+        }
     }
 
-    /* diario (158..191): 2 righe con clip a pannello */
+    /* diario (158..191): testo a capo e sempre dentro il pannello */
     rect_bordo(2, 158, 252, 34, C_BORDO, C_PANEL, mainbuf);
     testo(4, 160, "DIARIO", C_ACCENTO, mainbuf);
     {
@@ -279,7 +308,8 @@ static void draw_top_board(void) {
             else if (g_log[idx].tipo == 3) col = C_ACCENTO;
             else if (g_log[idx].tipo == 4) col = C_SOFT;
             tronca(t, sizeof(t), g_log[idx].testo, 31);
-            testo_clip(4, 170 + i * LINE_H, t, col, mainbuf, 2, 158, 252, 33);
+            testo_wrap_clip(4, 170 + i * LINE_H, 244, t, col, 1,
+                            mainbuf, 2, 158, 252, 33);
         }
     }
 }
@@ -297,25 +327,51 @@ static void draw_top_title(void) {
    Schermo INFERIORE
    ============================================================ */
 
+/* nome carta su 2 righe da max 7 caratteri: taglio per parole intere */
+static void card_nome_righe(const char *nome, char *r1, char *r2) {
+    int i = 0, n = 0;
+    r1[0] = '\0';
+    r2[0] = '\0';
+    while (nome[i]) {
+        int wlen = 0;
+        while (nome[i + wlen] && nome[i + wlen] != ' ' && wlen < 12) wlen++;
+        int next = i + wlen;
+        if (nome[next] == ' ') next++;
+        if (wlen == 0) { i = next; continue; }
+        if (n > 0 && (n + 1 + wlen) > 7) break; /* prima riga piena */
+        if (n > 0) r1[n++] = ' ';
+        memcpy(r1 + n, nome + i, (size_t)wlen);
+        n += wlen;
+        i = next;
+        if (n >= 7) break;
+    }
+    r1[n] = '\0';
+    if (nome[i]) {
+        int n2 = 0;
+        while (nome[i] && n2 < 7) r2[n2++] = nome[i++];
+        if (nome[i]) r2[n2 - 1] = '.';
+        r2[n2] = '\0';
+    }
+}
+
 static void draw_card(int x, int y, int id) {
     char t[24];
     rect_bordo(x, y, 62, 80, C_BORDO, C_PANEL, subbuf);
     /* le tre aree della carta sono indipendenti e clippate al rettangolo */
-    /* 1) NOME: 2 righe, larghezza della carta, ellissi se troppo lungo */
+    /* 1) NOME: 2 righe, parola per parola, ellissi se troppo lungo */
     {
         const char *nome = carta_nome(id);
         char r1[16], r2[16];
-        int i = 0, n1 = 0;
-        while (nome[i] && n1 < 6) r1[n1++] = nome[i++];
-        if (nome[i]) { r1[6] = '.'; }
-        r1[n1] = '\0';
-        n1 = 0;
-        while (nome[i] && n1 < 6) r2[n1++] = nome[i++];
-        if (nome[i]) { if (n1 > 0) r2[n1 - 1] = '.'; }
-        r2[n1] = '\0';
+        card_nome_righe(nome, r1, r2);
         testo_clip(x + 3, y + 2, r1, C_TESTO, subbuf, x + 1, y + 1, 60, 19);
         if (r2[0]) testo_clip(x + 3, y + 12, r2, C_TESTO, subbuf, x + 1, y + 1, 60, 19);
     }
+    /* 2) ART: immagine della carta (PNG convertito) nella propria banda */
+    img_blit(x + 9, y + 20, ASSET_CARD_1 + (id - 1), subbuf);
+    /* 3) EFFETTO/BONUS: 1 riga, clippata alla carta */
+    tronca(t, sizeof(t), carta_effetto(id), 6);
+    testo_clip(x + 3, y + 71, t, C_SOFT, subbuf, x + 1, y + 65, 60, 14);
+}
     /* 2) ART: icona centrata sulla carta (banda y+20..y+64) */
     img_blit(x + 9, y + 20, ASSET_CARD_1 + (id - 1), subbuf);
     /* 3) EFFETTO: 1 riga sotto l'arte, clippata alla carta */
@@ -365,9 +421,9 @@ static void draw_bottom_gioca(void) {
 
 static void draw_bottom_scelta(void) {
     fill_screen(subbuf, C_BG);
-    rect_bordo(8, 8, 240, 176, C_BORDO, C_PANEL, subbuf);
-    testo_wrap_clip(12, 12, 224, g_scelta.titolo, C_ACCENTO, 2, subbuf, 8, 8, 240, 176);
-    testo_wrap_clip(12, 30, 224, g_scelta.testo, C_TESTO, 9, subbuf, 8, 28, 240, 94);
+    rect_bordo(8, 8, 240, 175, C_BORDO, C_PANEL, subbuf);
+    testo_wrap_clip(12, 12, 224, g_scelta.titolo, C_ACCENTO, 2, subbuf, 8, 8, 240, 175);
+    testo_wrap_clip(12, 30, 224, g_scelta.testo, C_TESTO, 9, subbuf, 8, 28, 240, 93);
     {
         Btn b1, b2;
         b1.x = 16; b1.y = 124; b1.w = 224; b1.h = 24;
@@ -375,28 +431,28 @@ static void draw_bottom_scelta(void) {
         draw_btn(&b1, g_scelta.op1, C_ACCENTO, C_TESTO, subbuf);
         draw_btn(&b2, g_scelta.op2, C_DANNO, C_TESTO, subbuf);
     }
-    testo(4, 182, "A = prima scelta   B = seconda", C_SOFT, subbuf);
+    testo(4, 184, "A = prima scelta   B = seconda", C_SOFT, subbuf);
 }
 
 static void draw_bottom_riepilogo(void) {
     char m[48];
     int i;
     fill_screen(subbuf, C_BG);
-    rect_bordo(8, 8, 240, 176, C_BORDO, C_PANEL, subbuf);
+    rect_bordo(8, 8, 240, 175, C_BORDO, C_PANEL, subbuf);
     snprintf(m, sizeof(m), "GIORNO %d - RIEPILOGO", G.giorno);
     testo(12, 12, m, C_ACCENTO, subbuf);
     for (i = 0; i < g_riep_nrighe && i < 11; i++) {
         u16 col = g_riep_tipo[i] == 1 ? C_BENE : (g_riep_tipo[i] == 2 ? C_DANNO : C_TESTO);
-        testo_clip(12, 24 + i * LINE_H, g_riep_righe[i], col, subbuf, 8, 24, 240, 128);
+        testo_clip(12, 24 + i * LINE_H, g_riep_righe[i], col, subbuf, 8, 24, 240, 126);
     }
-    snprintf(m, sizeof(m), "Punti Vita: %d / %d", g_riep_pv, PV_MAX);
-    testo(12, 24 + g_riep_nrighe * LINE_H + 2, m, C_TESTO, subbuf);
+    snprintf(m, sizeof(m), "PVita: %d / %d", g_riep_pv, PV_MAX);
+    testo_clip(12, 24 + g_riep_nrighe * LINE_H + 2, m, C_TESTO, subbuf, 8, 24, 240, 126);
     {
         Btn b;
         b.x = 60; b.y = 154; b.w = 136; b.h = 24;
         draw_btn(&b, "AVANTI", C_BENE, C_TESTO, subbuf);
     }
-    testo(4, 182, "A = avanti", C_SOFT, subbuf);
+    testo(4, 184, "A = avanti", C_SOFT, subbuf);
 }
 
 static void draw_bottom_finale(void) {
@@ -468,7 +524,7 @@ static void draw_bottom_titolo(void) {
     draw_btn(&b, "REGOLE", C_BORDO, C_TESTO, subbuf);
 
     snprintf(m, sizeof(m), "Autotest: %d OK %d FAIL", test_ok, test_fail);
-    testo(4, 182, m, test_fail == 0 ? C_BENE : C_DANNO, subbuf);
+    testo(4, 184, m, test_fail == 0 ? C_BENE : C_DANNO, subbuf);
 }
 
 static void draw_bottom_regole(void) {
@@ -476,7 +532,7 @@ static void draw_bottom_regole(void) {
     testo(12, 8, "REGOLE", C_ACCENTO, subbuf);
     testo_wrap_clip(12, 20, 232, REGOLE_TESTO, C_TESTO, 16,
                     subbuf, 12, 20, 232, 160);
-    testo(4, 182, "B: torna al menu", C_SOFT, subbuf);
+    testo(4, 184, "B: torna al menu", C_SOFT, subbuf);
 }
 
 static void draw_top(void) {

@@ -30,9 +30,9 @@ ICON_E_W, ICON_E_H = 24, 24
 LOGO_MAX_W, LOGO_MAX_H = 96, 48
 BG_W, BG_H = 256, 192
 
-# Colori di appoggio (RGB 8 bit)
-PANEL = (20, 34, 44)     # pannello carta
-BG_COL = (11, 36, 50)    # sfondo scuro (oceanico, come #0b2432)
+# Colori di appoggio (RGB 8 bit) - abbinati alle costanti C_PANEL/C_BG di ui.c
+PANEL = (49, 90, 132)    # pannello carta (RGB15 6,11,18)
+BG_COL = (33, 55, 90)    # sfondo scuro (RGB15 4,7,11)
 
 
 def rgb555(r, g, b):
@@ -71,23 +71,23 @@ def focus(img, frac=0.78):
     return img.crop((x, y, x + side, y + side))
 
 
-def to_565(img, gain=1.0):
+def to_565(img, gain=1.0, lift=0):
     w, h = img.size
     px = img.load()
     out = []
     for y in range(h):
         for x in range(w):
             r, g, b = px[x, y][:3]
-            r = min(255, int(r * gain))
-            g = min(255, int(g * gain))
-            b = min(255, int(b * gain))
+            r = min(255, int(r * gain) + lift)
+            g = min(255, int(g * gain) + lift)
+            b = min(255, int(b * gain) + lift)
             out.append(rgb555(r, g, b))
     return out
 
 
-def emit(name, img, lines, gain=1.0):
+def emit(name, img, lines, gain=1.0, lift=0):
     w, h = img.size
-    data = to_565(img, gain)
+    data = to_565(img, gain, lift)
     lines.append("static const unsigned short %s[%d] = {" % (name, len(data)))
     for i in range(0, len(data), 16):
         chunk = data[i:i + 16]
@@ -114,24 +114,24 @@ def main():
 
     entries = []
 
-    def add(tag, img, gain=1.0):
+    def add(tag, img, gain=1.0, lift=0):
         name = "assets_%s" % tag
-        emit(name, img, lines, gain)
+        emit(name, img, lines, gain, lift)
         entries.append((name, img.size))
         lines.append("")
 
-    # Carte: soggetto centrale + un filo di luce in piu' (chiarezza a 44px)
+    # Carte: soggetto centrale fortemente illuminato (sul DS l'UI e' scura)
     for i in range(1, 31):
         img = load("c%02d" % i)
-        add("c%02d" % i, fit(focus(img), CARD_W, CARD_H, PANEL), 1.15)
+        add("c%02d" % i, fit(focus(img), CARD_W, CARD_H, PANEL), 1.55, 14)
 
-    add("retro", fit(focus(load("retro")), CARD_W, CARD_H, PANEL), 1.15)
+    add("retro", fit(focus(load("retro")), CARD_W, CARD_H, PANEL), 1.55, 14)
 
     for i in range(1, 5):
-        add("icon_r%d" % i, fit(focus(load("icon_r%d" % i)), ICON_R_W, ICON_R_H, BG_COL), 1.1)
+        add("icon_r%d" % i, fit(focus(load("icon_r%d" % i)), ICON_R_W, ICON_R_H, BG_COL), 1.45, 12)
 
     for i in range(1, 13):
-        add("icon_e%d" % i, fit(focus(load("icon_e%d" % i)), ICON_E_W, ICON_E_H, BG_COL), 1.1)
+        add("icon_e%d" % i, fit(focus(load("icon_e%d" % i)), ICON_E_W, ICON_E_H, BG_COL), 1.45, 12)
 
     add("logo", fit(load("logo"), LOGO_MAX_W, LOGO_MAX_H, BG_COL))
     add("sfondo", fit(load("sfondo"), BG_W, BG_H, BG_COL, cover=True))
